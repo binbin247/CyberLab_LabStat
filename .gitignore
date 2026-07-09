@@ -1,0 +1,16 @@
+.DS_Store
+AGENT.md
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local credentials and transient secrets.
+config/local.env
+*.token
+*.cookie
+*.secret
+
+# Runtime scratch files should stay outside the repository.
+tmp/
