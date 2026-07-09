@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import csv
-from datetime import datetime
+from argparse import ArgumentParser
+from datetime import datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -13,24 +15,47 @@ import matplotlib.pyplot as plt
 ROOT = Path(__file__).resolve().parents[1]
 RAW_DIR = ROOT / "data" / "raw"
 FIGURE_DIR = ROOT / "figures"
+TIMEZONE = ZoneInfo("Asia/Shanghai")
 
-TIME_WINDOW = "2026-07-08 12:00 至 2026-07-09 12:00"
-TIME_WINDOW_SLUG = "2026-07-08-12-00-00_to_2026-07-09-12-00-00"
-WINDOW_START = datetime(2026, 7, 8, 12, 0, 0)
-WINDOW_END = datetime(2026, 7, 9, 12, 0, 0)
 
-SENSORS = [
-    {
-        "csv": RAW_DIR / f"106-设备区_raw_{TIME_WINDOW_SLUG}.csv",
-        "label": "外间",
-        "color": "#2563EB",
-    },
-    {
-        "csv": RAW_DIR / f"106-testing 5_raw_{TIME_WINDOW_SLUG}.csv",
-        "label": "内间",
-        "color": "#EA580C",
-    },
-]
+def default_window() -> tuple[datetime, datetime]:
+    today = datetime.now(TIMEZONE).date()
+    window_end = datetime.combine(today, time(12, 0, 0))
+    return window_end - timedelta(days=1), window_end
+
+
+def parse_local_datetime(value: str) -> datetime:
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            pass
+    raise ValueError(f"时间格式不支持: {value!r}")
+
+
+def window_slug(start: datetime, end: datetime) -> str:
+    return f"{start:%Y-%m-%d-%H-%M-%S}_to_{end:%Y-%m-%d-%H-%M-%S}"
+
+
+def build_sensors(slug: str) -> list[dict[str, object]]:
+    return [
+        {
+            "csv": RAW_DIR / f"106-设备区_raw_{slug}.csv",
+            "label": "外间",
+            "color": "#2563EB",
+        },
+        {
+            "csv": RAW_DIR / f"106-testing 5_raw_{slug}.csv",
+            "label": "内间",
+            "color": "#EA580C",
+        },
+    ]
+
+
+WINDOW_START, WINDOW_END = default_window()
+TIME_WINDOW = f"{WINDOW_START:%Y-%m-%d %H:%M} 至 {WINDOW_END:%Y-%m-%d %H:%M}"
+TIME_WINDOW_SLUG = window_slug(WINDOW_START, WINDOW_END)
+SENSORS = build_sensors(TIME_WINDOW_SLUG)
 
 
 def configure_matplotlib() -> None:
@@ -237,7 +262,29 @@ def plot_combined() -> None:
     print(f"{output_path}: 温度 {', '.join(temperature_counts)}; 湿度 {', '.join(humidity_counts)}")
 
 
+def parse_args() -> object:
+    parser = ArgumentParser(description="Plot CyberLab temperature and humidity data.")
+    parser.add_argument("--start", help="窗口开始时间，例如 2026-07-08 12:00:00")
+    parser.add_argument("--end", help="窗口结束时间，例如 2026-07-09 12:00:00")
+    return parser.parse_args()
+
+
+def set_time_window(start: datetime, end: datetime) -> None:
+    global WINDOW_START, WINDOW_END, TIME_WINDOW, TIME_WINDOW_SLUG, SENSORS
+    WINDOW_START = start
+    WINDOW_END = end
+    TIME_WINDOW = f"{WINDOW_START:%Y-%m-%d %H:%M} 至 {WINDOW_END:%Y-%m-%d %H:%M}"
+    TIME_WINDOW_SLUG = window_slug(WINDOW_START, WINDOW_END)
+    SENSORS = build_sensors(TIME_WINDOW_SLUG)
+
+
 def main() -> None:
+    args = parse_args()
+    if args.start or args.end:
+        if not args.start or not args.end:
+            raise SystemExit("--start 和 --end 必须同时提供")
+        set_time_window(parse_local_datetime(args.start), parse_local_datetime(args.end))
+
     configure_matplotlib()
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     plot_combined()

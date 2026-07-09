@@ -28,7 +28,9 @@
 
 ```bash
 cd /Users/binbin/Desktop/CyberLab_LabStat
-MPLCONFIGDIR=/tmp/matplotlib scripts/visualize_temperature_humidity.py
+MPLCONFIGDIR=/tmp/matplotlib scripts/visualize_temperature_humidity.py \
+  --start "2026-07-08 12:00:00" \
+  --end "2026-07-09 12:00:00"
 ```
 
 脚本使用本机固定 Python 路径：
