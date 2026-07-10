@@ -16,6 +16,19 @@ ROOT = Path(__file__).resolve().parents[1]
 RAW_DIR = ROOT / "data" / "raw"
 FIGURE_DIR = ROOT / "figures"
 TIMEZONE = ZoneInfo("Asia/Shanghai")
+SENSOR_CONFIGS = (
+    {
+        "name": "106-设备区",
+        "label": "外间",
+        "color": "#2563EB",
+    },
+    {
+        "name": "106-testing 5",
+        "label": "内间",
+        "color": "#EA580C",
+    },
+)
+DEVICE_NAMES = tuple(sensor["name"] for sensor in SENSOR_CONFIGS)
 
 
 def default_window() -> tuple[datetime, datetime]:
@@ -37,18 +50,18 @@ def window_slug(start: datetime, end: datetime) -> str:
     return f"{start:%Y-%m-%d-%H-%M-%S}_to_{end:%Y-%m-%d-%H-%M-%S}"
 
 
-def build_sensors(slug: str) -> list[dict[str, object]]:
+def build_sensors(
+    slug: str, device_names: list[str] | None = None
+) -> list[dict[str, object]]:
+    selected_devices = set(device_names or DEVICE_NAMES)
     return [
         {
-            "csv": RAW_DIR / f"106-设备区_raw_{slug}.csv",
-            "label": "外间",
-            "color": "#2563EB",
-        },
-        {
-            "csv": RAW_DIR / f"106-testing 5_raw_{slug}.csv",
-            "label": "内间",
-            "color": "#EA580C",
-        },
+            "csv": RAW_DIR / f"{sensor['name']}_raw_{slug}.csv",
+            "label": sensor["label"],
+            "color": sensor["color"],
+        }
+        for sensor in SENSOR_CONFIGS
+        if sensor["name"] in selected_devices
     ]
 
 
@@ -100,6 +113,8 @@ def read_metric(csv_path: Path, metric_prefix: str) -> tuple[list[datetime], lis
             if not created_at or not metric_value:
                 continue
             local_time = datetime.fromisoformat(created_at).replace(tzinfo=None)
+            if not WINDOW_START <= local_time <= WINDOW_END:
+                continue
             points.append((local_time, float(metric_value)))
 
     points.sort(key=lambda item: item[0])
@@ -120,6 +135,8 @@ def read_latest_voltage(csv_path: Path) -> float | None:
             if not created_at or not voltage_value:
                 continue
             local_time = datetime.fromisoformat(created_at).replace(tzinfo=None)
+            if not WINDOW_START <= local_time <= WINDOW_END:
+                continue
             points.append((local_time, float(voltage_value)))
 
     if not points:
@@ -266,24 +283,37 @@ def parse_args() -> object:
     parser = ArgumentParser(description="Plot CyberLab temperature and humidity data.")
     parser.add_argument("--start", help="窗口开始时间，例如 2026-07-08 12:00:00")
     parser.add_argument("--end", help="窗口结束时间，例如 2026-07-09 12:00:00")
+    parser.add_argument(
+        "--device",
+        action="append",
+        choices=DEVICE_NAMES,
+        help="仅绘制指定设备，可重复传入；默认绘制两台设备",
+    )
     return parser.parse_args()
 
 
-def set_time_window(start: datetime, end: datetime) -> None:
+def set_time_window(
+    start: datetime, end: datetime, device_names: list[str] | None = None
+) -> None:
     global WINDOW_START, WINDOW_END, TIME_WINDOW, TIME_WINDOW_SLUG, SENSORS
     WINDOW_START = start
     WINDOW_END = end
     TIME_WINDOW = f"{WINDOW_START:%Y-%m-%d %H:%M} 至 {WINDOW_END:%Y-%m-%d %H:%M}"
     TIME_WINDOW_SLUG = window_slug(WINDOW_START, WINDOW_END)
-    SENSORS = build_sensors(TIME_WINDOW_SLUG)
+    SENSORS = build_sensors(TIME_WINDOW_SLUG, device_names)
 
 
 def main() -> None:
     args = parse_args()
+    start = WINDOW_START
+    end = WINDOW_END
     if args.start or args.end:
         if not args.start or not args.end:
             raise SystemExit("--start 和 --end 必须同时提供")
-        set_time_window(parse_local_datetime(args.start), parse_local_datetime(args.end))
+        start = parse_local_datetime(args.start)
+        end = parse_local_datetime(args.end)
+
+    set_time_window(start, end, args.device)
 
     configure_matplotlib()
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
