@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 
+from lab_status_rules import HUMIDITY_RANGE_RH, TEMPERATURE_RANGE_C
+
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW_DIR = ROOT / "data" / "raw"
@@ -182,10 +184,9 @@ def plot_metric(
     metric_prefix: str,
     title: str,
     unit: str,
-    span_label: str,
     ylabel: str,
-    reference_value: float,
-    reference_label: str,
+    normal_range: tuple[float, float],
+    normal_range_label: str,
 ) -> list[str]:
     counts: list[str] = []
     summary_rows: list[list[str]] = []
@@ -220,13 +221,23 @@ def plot_metric(
             markeredgewidth=0,
         )
 
-    ax.axhline(
-        reference_value,
-        color="#464C55",
-        linestyle="--",
-        linewidth=1.2,
-        label=reference_label,
+    lower, upper = normal_range
+    ax.axhspan(
+        lower,
+        upper,
+        color="#E8ECF1",
+        alpha=0.55,
+        label=normal_range_label,
+        zorder=0,
     )
+    for boundary in normal_range:
+        ax.axhline(
+            boundary,
+            color="#464C55",
+            linestyle="--",
+            linewidth=1.1,
+            zorder=1,
+        )
     ax.set_title(title, loc="center", fontsize=15, fontweight="bold", y=1.29)
     add_summary_table(ax, summary_rows, row_colors)
     ax.set_ylabel(ylabel)
@@ -255,20 +266,18 @@ def plot_combined() -> None:
         "field1(",
         f"实验室温度（{TIME_WINDOW}）",
         " °C",
-        "最大温差",
         "温度 (°C)",
-        25,
-        "25 °C 警戒线",
+        TEMPERATURE_RANGE_C,
+        "正常范围 20 至 25 °C",
     )
     humidity_counts = plot_metric(
         axes[1],
         "field2(",
         f"实验室湿度（{TIME_WINDOW}）",
         "%RH",
-        "最大湿度差",
         "相对湿度 (%RH)",
-        39,
-        "39% 警戒线",
+        HUMIDITY_RANGE_RH,
+        "正常范围 35 至 60 %RH",
     )
 
     axes[1].set_xlabel("时间")
