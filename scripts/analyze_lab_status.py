@@ -136,13 +136,33 @@ def calculate_out_of_range_duration(
     normal_range: tuple[float, float],
     end: datetime,
 ) -> timedelta:
-    total = timedelta()
+    return sum(
+        (
+            interval_end - interval_start
+            for interval_start, interval_end in calculate_out_of_range_intervals(
+                points, normal_range, end
+            )
+        ),
+        timedelta(),
+    )
+
+
+def calculate_out_of_range_intervals(
+    points: tuple[tuple[datetime, float], ...],
+    normal_range: tuple[float, float],
+    end: datetime,
+) -> tuple[tuple[datetime, datetime], ...]:
+    intervals: list[tuple[datetime, datetime]] = []
     for index, (timestamp, value) in enumerate(points):
         next_timestamp = points[index + 1][0] if index + 1 < len(points) else end
         interval_end = min(next_timestamp, end, timestamp + MAX_SAMPLE_HOLD)
-        if interval_end > timestamp and is_out_of_range(value, normal_range):
-            total += interval_end - timestamp
-    return total
+        if interval_end <= timestamp or not is_out_of_range(value, normal_range):
+            continue
+        if intervals and intervals[-1][1] == timestamp:
+            intervals[-1] = (intervals[-1][0], interval_end)
+        else:
+            intervals.append((timestamp, interval_end))
+    return tuple(intervals)
 
 
 def evaluate_window(
@@ -189,32 +209,34 @@ def describe_extremes(evaluation: MetricEvaluation) -> str:
     return "，".join(descriptions)
 
 
+def describe_intervals(evaluation: MetricEvaluation, end: datetime) -> str:
+    intervals = calculate_out_of_range_intervals(
+        evaluation.points, evaluation.metric.normal_range, end
+    )
+    return "、".join(
+        f"{interval_start:%Y-%m-%d %H:%M} 至 {interval_end:%Y-%m-%d %H:%M}"
+        for interval_start, interval_end in intervals
+    )
+
+
 def build_conclusion(
     evaluations: list[MetricEvaluation], start: datetime, end: datetime
 ) -> str:
-    window = f"{start:%Y-%m-%d %H:%M} 至 {end:%Y-%m-%d %H:%M}"
     abnormal = [evaluation for evaluation in evaluations if evaluation.is_abnormal]
     if abnormal:
         details = []
         for evaluation in abnormal:
             lower, upper = evaluation.metric.normal_range
             details.append(
-                f"{evaluation.sensor_label}{evaluation.metric.name}超出 "
-                f"{lower:g}–{upper:g} {evaluation.metric.unit} 的累计时长为 "
-                f"{format_duration(evaluation.out_of_range_duration)}"
-                f"（{describe_extremes(evaluation)}）"
+                f"{evaluation.sensor_label}{evaluation.metric.name}在 "
+                f"{describe_intervals(evaluation, end)} 超出正常范围 "
+                f"{lower:g}–{upper:g} {evaluation.metric.unit}，累计 "
+                f"{format_duration(evaluation.out_of_range_duration)}，"
+                f"{describe_extremes(evaluation)}"
             )
-        return f"实验室温湿度监测：不正常。{window} 期间，{'；'.join(details)}。"
+        return f"实验室温湿度监测：不正常。{'；'.join(details)}。"
 
-    labels = []
-    for evaluation in evaluations:
-        if evaluation.sensor_label not in labels:
-            labels.append(evaluation.sensor_label)
-    coverage = "和".join(labels)
-    return (
-        f"实验室温湿度监测：正常。{window} 期间，{coverage}温度超出 "
-        "20–25 °C、湿度超出 35–60 %RH 的各项累计时长均未超过 2 小时。"
-    )
+    return "实验室温湿度监测：正常。"
 
 
 def parse_args() -> object:

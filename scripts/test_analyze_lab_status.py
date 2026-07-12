@@ -8,6 +8,7 @@ from analyze_lab_status import (
     MetricEvaluation,
     build_conclusion,
     calculate_out_of_range_duration,
+    calculate_out_of_range_intervals,
     format_duration,
     is_out_of_range,
 )
@@ -38,10 +39,9 @@ class DurationRuleTests(unittest.TestCase):
         evaluation = MetricEvaluation("内间", METRIC_SPECS[0], points, duration)
         self.assertEqual(duration, timedelta(hours=2))
         self.assertFalse(evaluation.is_abnormal)
-        self.assertTrue(
-            build_conclusion([evaluation], self.start, self.end).startswith(
-                "实验室温湿度监测：正常。"
-            )
+        self.assertEqual(
+            build_conclusion([evaluation], self.start, self.end),
+            "实验室温湿度监测：正常。",
         )
 
     def test_more_than_two_hours_is_abnormal(self) -> None:
@@ -59,10 +59,48 @@ class DurationRuleTests(unittest.TestCase):
         evaluation = MetricEvaluation("内间", METRIC_SPECS[0], points, duration)
         self.assertEqual(duration, timedelta(hours=2, minutes=30))
         self.assertTrue(evaluation.is_abnormal)
-        self.assertTrue(
-            build_conclusion([evaluation], self.start, self.end).startswith(
-                "实验室温湿度监测：不正常。"
-            )
+        self.assertEqual(
+            build_conclusion([evaluation], self.start, self.end),
+            "实验室温湿度监测：不正常。内间温度在 "
+            "2026-07-12 00:00 至 2026-07-12 02:30 超出正常范围 "
+            "20–25 °C，累计 2 小时 30 分钟，最高 26.00 °C"
+            "（2026-07-12 00:00）。",
+        )
+
+    def test_separate_out_of_range_periods_are_reported(self) -> None:
+        points = self.points(
+            [
+                (0, 26.0),
+                (30, 26.0),
+                (60, 22.0),
+                (90, 26.0),
+                (120, 26.0),
+                (150, 26.0),
+                (180, 22.0),
+            ]
+        )
+        intervals = calculate_out_of_range_intervals(
+            points, (20.0, 25.0), self.end
+        )
+        duration = calculate_out_of_range_duration(
+            points, (20.0, 25.0), self.end
+        )
+        self.assertEqual(
+            intervals,
+            (
+                (self.start, self.start + timedelta(minutes=60)),
+                (
+                    self.start + timedelta(minutes=90),
+                    self.start + timedelta(minutes=180),
+                ),
+            ),
+        )
+        evaluation = MetricEvaluation("内间", METRIC_SPECS[0], points, duration)
+        conclusion = build_conclusion([evaluation], self.start, self.end)
+        self.assertIn(
+            "2026-07-12 00:00 至 2026-07-12 01:00、"
+            "2026-07-12 01:30 至 2026-07-12 03:00",
+            conclusion,
         )
 
     def test_long_data_gap_is_capped_at_thirty_minutes(self) -> None:
