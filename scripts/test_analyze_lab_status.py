@@ -113,6 +113,41 @@ class DurationRuleTests(unittest.TestCase):
             format_duration(timedelta(hours=2, seconds=1)), "2 小时 1 分钟"
         )
 
+    def test_normal_single_device_marks_offline_device(self) -> None:
+        points = self.points([(0, 22.0), (30, 22.0)])
+        evaluation = MetricEvaluation("内间", METRIC_SPECS[0], points, timedelta())
+        self.assertEqual(
+            build_conclusion(
+                [evaluation],
+                self.start,
+                self.end,
+                offline_device_names=["106-设备区"],
+            ),
+            "实验室温湿度监测：正常。外间离线，未纳入本次统计。",
+        )
+
+    def test_abnormal_single_device_keeps_offline_note(self) -> None:
+        points = self.points(
+            [
+                (0, 26.0),
+                (30, 26.0),
+                (60, 26.0),
+                (90, 26.0),
+                (120, 26.0),
+                (150, 22.0),
+            ]
+        )
+        duration = calculate_out_of_range_duration(points, (20.0, 25.0), self.end)
+        evaluation = MetricEvaluation("内间", METRIC_SPECS[0], points, duration)
+        self.assertTrue(
+            build_conclusion(
+                [evaluation],
+                self.start,
+                self.end,
+                offline_device_names=["106-设备区"],
+            ).endswith("外间离线，未纳入本次统计。")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

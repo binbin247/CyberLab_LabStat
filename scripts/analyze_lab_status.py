@@ -27,6 +27,7 @@ SENSOR_CONFIGS = (
     {"name": "106-testing 5", "label": "内间"},
 )
 DEVICE_NAMES = tuple(sensor["name"] for sensor in SENSOR_CONFIGS)
+DEVICE_LABELS = {sensor["name"]: sensor["label"] for sensor in SENSOR_CONFIGS}
 
 
 @dataclass(frozen=True)
@@ -220,8 +221,12 @@ def describe_intervals(evaluation: MetricEvaluation, end: datetime) -> str:
 
 
 def build_conclusion(
-    evaluations: list[MetricEvaluation], start: datetime, end: datetime
+    evaluations: list[MetricEvaluation],
+    start: datetime,
+    end: datetime,
+    offline_device_names: list[str] | None = None,
 ) -> str:
+    offline_note = format_offline_note(offline_device_names)
     abnormal = [evaluation for evaluation in evaluations if evaluation.is_abnormal]
     if abnormal:
         details = []
@@ -234,9 +239,16 @@ def build_conclusion(
                 f"{format_duration(evaluation.out_of_range_duration)}，"
                 f"{describe_extremes(evaluation)}"
             )
-        return f"实验室温湿度监测：不正常。{'；'.join(details)}。"
+        return f"实验室温湿度监测：不正常。{'；'.join(details)}。{offline_note}"
 
-    return "实验室温湿度监测：正常。"
+    return f"实验室温湿度监测：正常。{offline_note}"
+
+
+def format_offline_note(device_names: list[str] | None) -> str:
+    if not device_names:
+        return ""
+    labels = [DEVICE_LABELS[name] for name in device_names]
+    return f"{'、'.join(labels)}离线，未纳入本次统计。"
 
 
 def parse_args() -> object:
@@ -248,6 +260,12 @@ def parse_args() -> object:
         action="append",
         choices=DEVICE_NAMES,
         help="仅分析指定设备，可重复传入；默认分析两台设备",
+    )
+    parser.add_argument(
+        "--offline-device",
+        action="append",
+        choices=DEVICE_NAMES,
+        help="标注未纳入本次统计的离线设备，可重复传入",
     )
     return parser.parse_args()
 
@@ -264,7 +282,7 @@ def main() -> None:
         raise SystemExit("--start 必须早于 --end")
 
     evaluations = evaluate_window(start, end, args.device)
-    conclusion = build_conclusion(evaluations, start, end)
+    conclusion = build_conclusion(evaluations, start, end, args.offline_device)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = REPORT_DIR / f"lab_status_{window_slug(start, end)}.md"
     output_path.write_text(
