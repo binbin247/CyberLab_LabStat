@@ -280,6 +280,8 @@ def plot_combined() -> None:
         "正常范围 35 至 60 %RH",
     )
 
+    axes[0].tick_params(axis="x", which="both", labelbottom=True)
+    axes[0].set_xlabel("时间")
     axes[1].set_xlabel("时间")
 
     output_path = FIGURE_DIR / f"temperature_humidity_{TIME_WINDOW_SLUG}.png"
